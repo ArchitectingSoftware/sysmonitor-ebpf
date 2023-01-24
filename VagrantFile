@@ -1,0 +1,42 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+
+    # Uncomment the configuration for your machine based on ARM or AMD
+    #
+    # FOR ARM ARCHITECTURES - EG APPLE SILICONE, M1 or M2
+    config.vm.box = "hajowieland/ubuntu-jammy-arm"
+  
+    #
+    # FOR AMD ARCHITECTURES - Windows Machines, Intel based MACS
+    # config.vm.box = "generic/ubuntu2204"
+    
+   
+    config.vm.provider "vmware_desktop" do |v|
+      v.ssh_info_public = true
+      v.gui = true
+      v.linked_clone = false
+      v.vmx['displayname'] = 'CCI-Dev-ubuntu22-10'
+      v.vmx["ethernet0.virtualdev"] = "vmxnet3"
+    end
+  
+    config.vm.provision "shell", inline: <<-SHELL
+      VAGRANT_HOME="/home/vagrant"
+  
+      apt-get update
+      apt-get install --yes bpftrace
+      apt-get install --yes docker.io
+      apt-get install --yes clang
+      apt-get install --yes llvm
+      apt-get install --yes python-is-python3
+      apt-get install --yes linux-tools-$(uname -r)
+      apt-get install --yes python3-pip
+      apt-get install --yes bpfcc-tools
+      apt-get install --yes auditd
+      apt-get install --yes libbpf-dev
+      snap install go --classic
+      usermod -aG docker vagrant
+      # pip install bcc
+    SHELL
+  end
