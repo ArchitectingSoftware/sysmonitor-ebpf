@@ -1,0 +1,93 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"log"
+	"os"
+	"time"
+
+	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
+	"golang.org/x/exp/maps"
+	"golang.org/x/sys/unix"
+)
+
+// didnt really seem to need this, but a helper to set unix system limits for ebpf, including it
+// in case I figure out if I need it later :-)
+func setlimit() {
+	if err := unix.Setrlimit(unix.RLIMIT_MEMLOCK,
+		&unix.Rlimit{
+			Cur: unix.RLIM_INFINITY,
+			Max: unix.RLIM_INFINITY,
+		}); err != nil {
+		log.Fatalf("failed to set temporary rlimit: %v", err)
+	}
+}
+
+// Run the ebpf handler
+func RunEBPF() {
+	spec, err := loadSyscalls()
+	if err != nil {
+		log.Fatalf("spec read")
+	}
+	myPid := os.Getpid()
+	log.Printf("My PID: %d", myPid)
+
+	err = spec.RewriteConstants(map[string]interface{}{
+		"filter_pid": int32(myPid),
+	})
+	if err != nil {
+		log.Fatalf("constant does not exist")
+	}
+
+	objs := syscallsObjects{}
+	if err := spec.LoadAndAssign(&objs, nil); err != nil {
+		log.Fatalf("loading objects: %s", err)
+	}
+
+	//if err := loadSyscallsObjects(&objs, nil); err != nil {
+	//	log.Fatalf("loading objects: %s", err)
+	//}
+	defer objs.Close()
+
+	tp, err := link.Tracepoint("raw_syscalls", "sys_exit", objs.SysExit, nil)
+	if err != nil {
+		log.Fatalf("link failure %s", err)
+	}
+	defer tp.Close()
+
+	log.Printf("Attached to Program")
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	log.Println("Waiting for events..")
+	ks := make([]uint32, 512)
+	vs := make([]uint64, 512)
+	var nextKey uint32
+
+	//map for output
+	outputMap := make(map[uint32]uint64, 512)
+
+	for range ticker.C {
+		//var key int64
+		//value := syscallsDataT{}
+		fmt.Println("New batch of data")
+
+		cnt, err := objs.SyscallTable.BatchLookupAndDelete(nil, &nextKey, ks, vs, nil)
+		if err != nil {
+			if errors.Is(err, ebpf.ErrNotSupported) {
+				log.Fatalf("not supported error %s", err)
+			}
+		}
+
+		//Dont like it myself but this error is returned to indicate that all data has been received
+		if errors.Is(err, ebpf.ErrKeyNotExist) {
+			maps.Clear(outputMap)
+			for i := 0; i < cnt; i++ {
+				outputMap[ks[i]] = vs[i]
+			}
+			log.Printf("%v\n", outputMap)
+		}
+	}
+}
