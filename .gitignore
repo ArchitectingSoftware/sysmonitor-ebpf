@@ -1,4 +1,7 @@
-# Binaries for programs and plugins
+# Vagrant files 
+.vagrant
+
+#Binaries for programs and plugins
 *.exe
 *.exe~
 *.dll
