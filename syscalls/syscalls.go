@@ -27,18 +27,29 @@ func setlimit() {
 	}
 }
 
+// Used to initialize any filters before loading eBPF program into the kernel
+func initFilters(initMap map[string]interface{}) {
+
+	if !utils.InclMonitorDataFlag {
+		myPid := os.Getpid()
+		log.Printf("Filtering Monitor PID: %d from output syscalls", myPid)
+		initMap["filter_pid"] = int32(myPid)
+	}
+}
+
 // Run the ebpf handler
 func RunEBPF() {
 	spec, err := loadSyscalls()
 	if err != nil {
 		log.Fatalf("spec read")
 	}
-	myPid := os.Getpid()
-	log.Printf("Monitor PID: %d", myPid)
 
-	err = spec.RewriteConstants(map[string]interface{}{
-		"filter_pid": int32(myPid),
-	})
+	initFilter := map[string]interface{}{}
+
+	//now init the filters
+	initFilters(initFilter)
+
+	err = spec.RewriteConstants(initFilter)
 	if err != nil {
 		log.Fatalf("constant does not exist")
 	}
