@@ -19,7 +19,7 @@ sysmonitor-tool
 # vendor/
 # Go workspace file
 go.work
-
+go.sum
 # C file ignores Prerequisites
 *.d
 
