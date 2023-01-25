@@ -1,4 +1,4 @@
-APP=syscall-tool
+APP=sysmonitor-tool
 
 CFLAGS := -O2 -g -Wall -Werror $(CFLAGS)
 BPF_CFLAGS := $(CFLAGS)
@@ -8,15 +8,15 @@ GEN_EBPF_FILES := $(shell find . -type f -name '*_bpfe*.go')
 GOLANG_FILES := $(shell find . -name '*.go')
 EBPF_SRC_FILES := $(shell find . -name '*.ebpf.c')
 
-ifneq ("$(wildcard $(GEN_EBPF_FILES))","")
-    GEN_FILE_EXISTS = 1
-else
-    GEN_FILE_EXISTS = 0
-endif
-
+all: godeps genall build
 
 .PHONY: build
 build: $(APP)
+
+
+$(APP): $(GOLANG_FILES)
+	CGO_ENABLED=0 go build .
+
 
 .PHONY: run
 run: 
@@ -36,8 +36,6 @@ clean: delete-generated
 	-rm $(APP)
 
 
-$(APP): $(GOLANG_FILES)
-	CGO_ENABLED=0 go build .
 
 
 # Geneate EBPF Files
@@ -72,12 +70,16 @@ vmlinuxgen:  bpf/vmlinux.h
 sysnames/syscalls.csv: 
 	-ausyscall --dump > sysnames/syscalls.csv
 	-sed -i '1d' sysnames/syscalls.csv
-#.PHONY: syscallgen
+.PHONY: syscallgen
 syscallgen:  sysnames/syscalls.csv
-	
-	
+
+# Used to install go dependencies
+godeps: go.sum
+
+
 go.sum:
 	go mod download github.com/cilium/ebpf
+	go get
 	go get github.com/cilium/ebpf/internal/unix
 
 #delete all generated files made by go generate
