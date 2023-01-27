@@ -40,6 +40,9 @@ func initFilters(initMap map[string]interface{}) {
 
 // Run the ebpf handler
 func RunEBPF() {
+
+	eventLog, _ := utils.NewEventLogger()
+
 	spec, err := loadSyscalls()
 	if err != nil {
 		log.Fatalf("spec read")
@@ -100,6 +103,7 @@ func RunEBPF() {
 
 			//Dont like it myself but this error is returned to indicate that all data has been received
 			if errors.Is(err, ebpf.ErrKeyNotExist) {
+				eventLog.WriteSysCallEvent(cnt, ks, vs)
 				maps.Clear(outputMap)
 				for i := 0; i < cnt; i++ {
 					outputMap[ks[i]] = vs[i]
