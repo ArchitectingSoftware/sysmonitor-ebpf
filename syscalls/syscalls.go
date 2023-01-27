@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	// "drexel.edu/cci/sysmonitor-tool/utils"
 	"drexel.edu/cci/sysmonitor-tool/utils"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -85,6 +86,7 @@ func RunEBPF() {
 	log.Printf("Getting ready to run for %s - CTRL+C to exit earlier", utils.RunDurationFlag.String())
 	for range ticker.C {
 		nextKey = 0 //use to make sure everything is processed
+		kPrinter := utils.NewEventPrinter()
 
 		for {
 			/*
@@ -95,7 +97,7 @@ func RunEBPF() {
 			 * an excellent wrapper for libbpf
 			 */
 			cnt, err := objs.SyscallTable.BatchLookupAndDelete(nil, &nextKey, ks, vs, nil)
-			kPrinter := utils.NewEventPrinter()
+
 			//Dont like it myself but this error is returned to indicate that all data has been received
 			if errors.Is(err, ebpf.ErrKeyNotExist) {
 				maps.Clear(outputMap)

@@ -1,6 +1,10 @@
 package utils
 
-import "log"
+import (
+	"log"
+
+	"drexel.edu/cci/sysmonitor-tool/syscalls/sysnames"
+)
 
 type KernelMap map[uint32]uint64
 type SyscallMap map[int32]string
@@ -13,7 +17,7 @@ type KernelEventPrinter struct {
 func NewEventPrinter() KernelEventPrinter {
 	eventPrinter := KernelEventPrinter{}
 
-	scMap, err := BuildSyscallNameMap()
+	scMap, err := sysnames.BuildSyscallNameMap()
 	if err != nil {
 		eventPrinter.areNamesAvail = false
 		eventPrinter.nameMap = make(SyscallMap, 0)

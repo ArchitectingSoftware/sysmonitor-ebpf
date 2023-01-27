@@ -1,4 +1,4 @@
-package utils
+package sysnames
 
 import (
 	"bufio"
@@ -15,7 +15,7 @@ func BuildSyscallNameMap() (map[int32]string, error) {
 	//note file generated from ausyscall aamd64 --dump > syscalls-aamd64.csv
 	syscallMap := make(map[int32]string, 256)
 
-	f, err := os.Open("./sysnames/syscalls.csv")
+	f, err := os.Open("./syscalls/sysnames/syscalls.csv")
 	if err != nil {
 		return nil, err
 	}

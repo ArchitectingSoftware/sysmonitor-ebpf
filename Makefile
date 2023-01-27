@@ -33,7 +33,7 @@ fmt: sum
 
 .PHONY: clean
 clean: delete-generated 
-	-rm $(APP)
+	
 
 
 
@@ -67,11 +67,11 @@ vmlinuxgen:  includes/vmlinux.h
 
 # Generate the syscalls name to number mathing for your hardware architecture
 # you must have the ausyscall utility installed on your machine for this to work
-sysnames/syscalls.csv: 
-	-ausyscall --dump > sysnames/syscalls.csv
-	-sed -i '1d' sysnames/syscalls.csv
+syscalls/sysnames/syscalls.csv: 
+	-ausyscall --dump > syscalls/sysnames/syscalls.csv
+	-sed -i '1d' syscalls/sysnames/syscalls.csv
 .PHONY: syscallgen
-syscallgen:  sysnames/syscalls.csv
+syscallgen:  syscalls/sysnames/syscalls.csv
 
 # Used to install go dependencies
 godeps: go.sum
@@ -88,5 +88,6 @@ delete-generated:
 	find . -type f -name '*_bpfe*.go' -delete
 	find . -type f -name '*_bpfe*.o' -delete
 	find . -type f -name 'vmlinux.h' -delete
-	rm ./sysnames/syscalls.csv
+	-rm ./syscalls/sysnames/syscalls.csv
+	-rm $(APP)
 	
