@@ -1,6 +1,6 @@
 package syscalls
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags $BPF_CFLAGS syscalls ../bpf/syscalls.ebpf.c -- -I/usr/include/bpf -I.
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags $BPF_CFLAGS syscalls ./bpf/syscalls.ebpf.c -- -I/usr/include/bpf -I. -I../../includes
 
 import (
 	"errors"
@@ -59,9 +59,6 @@ func RunEBPF() {
 		log.Fatalf("loading objects: %s", err)
 	}
 
-	//if err := loadSyscallsObjects(&objs, nil); err != nil {
-	//	log.Fatalf("loading objects: %s", err)
-	//}
 	defer objs.Close()
 
 	tp, err := link.Tracepoint("raw_syscalls", "sys_exit", objs.SysExit, nil)

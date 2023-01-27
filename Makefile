@@ -60,10 +60,10 @@ ifeq ("$(wildcard $(GEN_EBPF_FILES))","")
 endif
 
 
-bpf/vmlinux.h:  
-	bpftool btf dump file /sys/kernel/btf/vmlinux format c > bpf/vmlinux.h
+includes/vmlinux.h:  
+	bpftool btf dump file /sys/kernel/btf/vmlinux format c > includes/vmlinux.h
 .PHONY: vmlinuxgen
-vmlinuxgen:  bpf/vmlinux.h
+vmlinuxgen:  includes/vmlinux.h
 
 # Generate the syscalls name to number mathing for your hardware architecture
 # you must have the ausyscall utility installed on your machine for this to work

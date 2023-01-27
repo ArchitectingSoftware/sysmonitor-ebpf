@@ -10,19 +10,18 @@ This program installs an eBPF filter in the kernel and monitors all syscalls in 
 ### Steps To Build and Run
 First, this is an eBPF program, so even though its written in Go, it can only be executed on a linux based machine.  I have included a `VagrantFile` if you want to run in a virtual machine. If you are running on a linux machine, the `VagrantFile` outlines all of the dependencies that are required to build eBPF programs. 
 
-Until I get the chance to clean up the Makefile, please use the following directions.  The makefile as it exists still provides insight into how to build this program.  In a nutshell:
+The makefile automates all of these things, but to summarize there are a number of things going on:
 
-1. The first thing you need to do is to generate the `vmlinux.h` header for your machine architecture.  This is done via executing: ```bpftool btf dump file /sys/kernel/btf/vmlinux format c > bpf/vmlinux.h```
+1. The first thing the makefile does is install the necessary golang dependencies that are identified in the `go.mod` file.
 
-2. The next thing you need to do, if you want to write out human friendly syscall names via verbose output is to make sure you have the `ausyscall` utility installed.  Then run `make syscallgen`.  This generates a file that is parsed to map syscall numbers into human readable names.  Note that there is a sample in this repo, but I generated it from my machine which is running an ARM64 version of Linux. For AMD64 you will need to regenerate it for your machines architecture. 
+2. Next, there are several files that need to be generated, the makefile step `genall` handles this.  The first thing that is generated is an architecture specific `vmlinux.h` that is placed in the `\includes` directory.  This is accomplished using the `bpftool`.  The second generation step is handled by `go generate`.  This step compiles the ebpf programs and generates golang wrappers.  The final generation step creates any needed architecture specific files.  For now, it uses the `ausyscall` utility if it exists on your machine to generate a table mapping syscall identifiers to human friendly names.
 
-3. The main kernel function is located in `bpf\syscalls.ebf.c`.  Thanks to the nice tooling from [cilium](https://pkg.go.dev/github.com/cilium/ebpf/cmd/bpf2go) they provide the means to compile this code via `go generate`.  To set this up run `go generate syscalls/syscalls.go`.  This will use `clang` behind the scenes to create object files and then generate some go helper functions.  They will be in the syscalls directory.  You basically get 2 versions, one for big endian and one for little endian.
+3. Finally, the makefile has a build step to compile the go programs.
 
-4. You can then compile the go code to get everything moving via `make build-app`.
 
-5. Thats it, you should have a binary named `sysmonitor-tool`.  You can run it and accept all parameters, but it must be run with `sudo` given the access you need to interface with eBPF.
+The makefile also includes a `clean` rule to delete the generated files and binaries, and a `run` step to run the executable. 
 
-Again, ill be cleaning up the Makefile shortly, but the above are the steps to get things running.
+
 
 ### Command Line Options
 This tool has a number of command line options, you can learn about them via the `-h` flag
