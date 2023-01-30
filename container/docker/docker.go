@@ -1,4 +1,4 @@
-package container
+package docker
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"drexel.edu/cci/sysmonitor-tool/container"
 	"drexel.edu/cci/sysmonitor-tool/internal"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
@@ -19,31 +20,19 @@ const (
 	defaultDocker = "/var/run/docker.sock"
 )
 
-type RuntimeType uint8
-
-const (
-	DockerRuntime RuntimeType = iota
-	ContainerDRuntime
-	CrioRuntime
-	PodmanRuntime
-	NoRuntime
-)
-
-type ContainerRuntime interface {
-}
-
+/*
 type ContainerDetails struct {
-	ContainerRuntime RuntimeType
-	ContainerID      string
-	PID              uint
-	LinuxNS          uint
+	ContainerID string
+	PID         uint
+	LinuxNS     uint
 }
+*/
 
-type ContainerMapList map[string]ContainerDetails
+const RuntimeName = "docker"
 
 type DockerContainers struct {
 	client *client.Client
-	cMap   map[string]ContainerDetails
+	cMap   map[string]container.ContainerDetails
 	ctx    context.Context
 }
 
@@ -57,7 +46,7 @@ func NewDocker() (DockerContainers, error) {
 
 	dc := DockerContainers{
 		client: cli,
-		cMap:   make(map[string]ContainerDetails, 64),
+		cMap:   make(map[string]container.ContainerDetails, 64),
 		ctx:    context.Background(),
 	}
 
@@ -68,29 +57,30 @@ func NewDocker() (DockerContainers, error) {
 	return dc, nil
 }
 
-func containerDetailsFromCid(ctx context.Context, client *client.Client, cid string) (ContainerDetails, error) {
+func containerDetailsFromCid(ctx context.Context, client *client.Client, cid string) (container.ContainerDetails, error) {
 	rsp, err := client.ContainerInspect(ctx, cid)
 	if err != nil {
-		return ContainerDetails{}, err
+		return container.ContainerDetails{}, err
 	}
 
 	if rsp.State == nil {
-		return ContainerDetails{}, errors.New("container state is nil")
+		return container.ContainerDetails{}, errors.New("container state is nil")
 	}
 	if rsp.State.Pid == 0 {
-		return ContainerDetails{}, errors.New("got zero pid")
+		return container.ContainerDetails{}, errors.New("got zero pid")
 	}
 
 	pid := uint(rsp.State.Pid)
 	ns, err := internal.GetPidNS(pid)
 	if err != nil {
-		return ContainerDetails{}, err
+		return container.ContainerDetails{}, err
 	}
 
-	cDetails := ContainerDetails{
-		ContainerID: cid,
-		PID:         pid,
-		LinuxNS:     ns,
+	cDetails := container.ContainerDetails{
+		ContainerRuntime: container.DockerRuntime,
+		ContainerID:      cid,
+		PID:              pid,
+		LinuxNS:          ns,
 	}
 
 	return cDetails, nil
@@ -186,15 +176,15 @@ func (d *DockerContainers) Listen() {
 }
 func (d *DockerContainers) InitContainers() error {
 
-	containers, err := d.client.ContainerList(d.ctx,
+	clist, err := d.client.ContainerList(d.ctx,
 		types.ContainerListOptions{})
 	if err != nil {
 		return err
 	}
 
-	for _, container := range containers {
+	for _, c := range clist {
 
-		rsp, err := d.client.ContainerInspect(d.ctx, container.ID)
+		rsp, err := d.client.ContainerInspect(d.ctx, c.ID)
 		if err != nil {
 			return err
 		}
@@ -212,27 +202,32 @@ func (d *DockerContainers) InitContainers() error {
 			return err
 		}
 
-		cDetails := ContainerDetails{
-			ContainerID: container.ID,
-			PID:         pid,
-			LinuxNS:     ns,
+		cDetails := container.ContainerDetails{
+			ContainerRuntime: container.DockerRuntime,
+			ContainerID:      c.ID,
+			PID:              pid,
+			LinuxNS:          ns,
 		}
 
-		d.cMap[container.ID] = cDetails
+		d.cMap[c.ID] = cDetails
 
 	}
 
 	return nil
 }
 
+func (d *DockerContainers) Ping() string {
+	return "pong"
+}
+
 func (d *DockerContainers) ListContainers() error {
-	containers, err := d.client.ContainerList(context.Background(), types.ContainerListOptions{})
+	clist, err := d.client.ContainerList(context.Background(), types.ContainerListOptions{})
 	if err != nil {
 		return err
 	}
 
-	for _, container := range containers {
-		fmt.Printf("%s %s\n", container.ID[:10], container.Image)
+	for _, c := range clist {
+		fmt.Printf("%s %s\n", c.ID[:10], c.Image)
 	}
 	return nil
 }
