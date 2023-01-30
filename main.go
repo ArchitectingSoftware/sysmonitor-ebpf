@@ -4,6 +4,7 @@ import (
 	"log"
 	"time"
 
+	"drexel.edu/cci/sysmonitor-tool/container"
 	"drexel.edu/cci/sysmonitor-tool/syscalls"
 	"drexel.edu/cci/sysmonitor-tool/utils"
 )
@@ -34,5 +35,15 @@ func testDurationLoop() {
 func main() {
 
 	utils.SetupFlags()
+
+	d, err := container.NewDocker()
+	if err != nil {
+		log.Fatalf("error getting ns info ", err)
+	}
+	d.InitContainers()
+	d.Debug()
+	d.Listen()
+	//container.ListContainers2()
+	log.Fatalf("DONE")
 	syscalls.RunEBPF()
 }
