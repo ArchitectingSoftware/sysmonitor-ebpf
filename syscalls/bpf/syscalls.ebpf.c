@@ -37,15 +37,61 @@ struct {
 	__type(value, u64);
 } namespace_table SEC(".maps");
 
+#define TASK_COMM_LEN 16
+
+struct event_t {
+    u64 cgroup_id; // cgroup id
+    u32 host_tid;  // tid in host pid namespace
+    u32 host_pid;  // pid in host pid namespace
+    u32 host_ppid; // ppid in host pid namespace
+
+    u32 tid;  // thread id in userspace
+    u32 pid;  // process id in userspace
+    u32 ppid; // parent process id in userspace
+    u32 uid;
+    u32 gid;
+
+    u32 cgroup_ns_id;
+    u32 ipc_ns_id;
+    u32 net_ns_id;
+    u32 mount_ns_id;
+    u32 pid_ns_id;
+    u32 time_ns_id;
+    u32 user_ns_id;
+    u32 uts_ns_id;
+
+    char comm[TASK_COMM_LEN]; // the name of the executable (excluding the path)
+};
+
+//useful informagtion
+//
+// capturing trace output here:  sudo cat /sys/kernel/debug/tracing/trace_pipe
+// useful link on disecting PIDs: https://github.com/mozillazg/hello-libbpfgo/blob/master/05-get-process-info/main.bpf.c
+//
+static __always_inline u32 get_namespace_id() {
+	    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+	struct nsproxy *namespaceproxy = BPF_CORE_READ(task, nsproxy);
+    return (u32) BPF_CORE_READ(namespaceproxy, pid_ns_for_children, ns.inum);
+}
+
+
 
 SEC("tracepoint/raw_syscalls/sys_exit")
 int sys_exit(struct trace_event_raw_sys_exit *args)
 {
-	//bpf_printk("Filter MPID= %d, MonitorPID=%d", filter_pid, filter_pid);
-	//bpf_trace_printk("debug - in sys_exit %d\n", 0);
-	
+
 	u64 id = bpf_get_current_pid_tgid();
 	pid_t pid = id >> 32;
+
+	//hack starts here
+    //struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+	//struct nsproxy *namespaceproxy = BPF_CORE_READ(task, nsproxy);
+	//u32 pid_ns_id =
+    //    BPF_CORE_READ(namespaceproxy, pid_ns_for_children, ns.inum);
+	//hack ends here
+	u32 ps_ns_id = get_namespace_id();
+
+	//u32 pns_id = (u32) BPF_CORE_READ(task, nsproxy, pid_ns_for_children, ns.inum);
 
 	u64 *val, zero = 0;
 	u32 key = args->id;
@@ -59,7 +105,8 @@ int sys_exit(struct trace_event_raw_sys_exit *args)
 			return 0;
 		//filter out a pid - for example dont capture syscalls from the monitor
 		if ((filter_pid) && (filter_pid == pid)){
-			//bpf_printk("filtering event for monitor %d", filter_pid);
+			//u32 nid = ns_id;
+			//bpf_printk("filtering event for monitor %u", pid_ns_id );
 			return 0;
 		}
 		//if we want to monior only one pid, monitor pid must be current pid

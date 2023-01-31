@@ -86,6 +86,9 @@ func RunEBPF() {
 	ticker := time.NewTicker(utils.IntervalTimeFlag)
 	defer ticker.Stop()
 
+	//play with namespaces
+	//objs.NamespaceTable.Update()
+	//
 	log.Printf("Getting ready to run for %s - CTRL+C to exit earlier", utils.RunDurationFlag.String())
 	for range ticker.C {
 		nextKey = 0 //use to make sure everything is processed
