@@ -61,7 +61,8 @@ type syscallsProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type syscallsMapSpecs struct {
-	SyscallTable *ebpf.MapSpec `ebpf:"syscall_table"`
+	NamespaceTable *ebpf.MapSpec `ebpf:"namespace_table"`
+	SyscallTable   *ebpf.MapSpec `ebpf:"syscall_table"`
 }
 
 // syscallsObjects contains all objects after they have been loaded into the kernel.
@@ -83,11 +84,13 @@ func (o *syscallsObjects) Close() error {
 //
 // It can be passed to loadSyscallsObjects or ebpf.CollectionSpec.LoadAndAssign.
 type syscallsMaps struct {
-	SyscallTable *ebpf.Map `ebpf:"syscall_table"`
+	NamespaceTable *ebpf.Map `ebpf:"namespace_table"`
+	SyscallTable   *ebpf.Map `ebpf:"syscall_table"`
 }
 
 func (m *syscallsMaps) Close() error {
 	return _SyscallsClose(
+		m.NamespaceTable,
 		m.SyscallTable,
 	)
 }

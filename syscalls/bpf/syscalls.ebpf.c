@@ -30,6 +30,13 @@ struct {
 	__type(value, u64);
 } syscall_table SEC(".maps");
 
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, MAX_ENTRIES);
+	__type(key, u32);
+	__type(value, u64);
+} namespace_table SEC(".maps");
+
 
 SEC("tracepoint/raw_syscalls/sys_exit")
 int sys_exit(struct trace_event_raw_sys_exit *args)
@@ -51,8 +58,10 @@ int sys_exit(struct trace_event_raw_sys_exit *args)
 		if(key == (u32)-1)
 			return 0;
 		//filter out a pid - for example dont capture syscalls from the monitor
-		if ((filter_pid) && (filter_pid == pid))
+		if ((filter_pid) && (filter_pid == pid)){
+			//bpf_printk("filtering event for monitor %d", filter_pid);
 			return 0;
+		}
 		//if we want to monior only one pid, monitor pid must be current pid
 		if((monitor_pid) && (monitor_pid != pid))
 			return 0;
