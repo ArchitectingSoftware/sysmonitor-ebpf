@@ -69,7 +69,7 @@ struct event_t {
 // useful link on disecting PIDs: https://github.com/mozillazg/hello-libbpfgo/blob/master/05-get-process-info/main.bpf.c
 //
 static __always_inline u32 get_namespace_id() {
-	    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+	struct task_struct *task = (struct task_struct *)bpf_get_current_task();
 	struct nsproxy *namespaceproxy = BPF_CORE_READ(task, nsproxy);
     return (u32) BPF_CORE_READ(namespaceproxy, pid_ns_for_children, ns.inum);
 }

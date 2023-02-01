@@ -29,6 +29,22 @@ const (
 	NoRuntime
 )
 
+type ContainerEventType uint8
+const(
+	ContainerStartEvent ContainerEventType = iota
+	ContainerStopEvent
+	ContainerErrrorEvent
+)
+
+type ContainerEvent struct{
+	action	ContainerEventType
+	details ContainerDetails
+	errors	error
+}
+
+type ContainerEventChannel chan ContainerEvent
+
+
 type ContainerRuntime interface {
 }
 
@@ -40,6 +56,18 @@ type ContainerDetails struct {
 }
 
 type ContainerMapList map[string]ContainerDetails
+
+type ContainerManger struct{
+	ContainerMap ContainerMapList
+	ContainerEvents ContainerEventChannel
+}
+
+func New() ContainerManger{
+	return ContainerManger{
+		ContainerMap: make(ContainerMapList, 100),
+		ContainerEvents: make(ContainerEventChannel),
+	}
+}
 
 type DockerContainers struct {
 	client *client.Client
