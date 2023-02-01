@@ -81,6 +81,8 @@ go.sum:
 	go mod download github.com/cilium/ebpf
 	go get
 	go get github.com/cilium/ebpf/internal/unix
+	-find . -type f -name '*_bpfe*.go' -delete
+	-find . -type f -name '*_bpfe*.o' -delete
 
 #delete all generated files made by go generate
 .PHONY: delete-generated
