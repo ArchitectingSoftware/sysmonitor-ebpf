@@ -29,23 +29,33 @@ const (
 	NoRuntime
 )
 
+type ContainerRuntimeNotImplementedError struct {
+	//just wrapping standard errror
+}
+
+func (c ContainerRuntimeNotImplementedError) Error() string {
+	return "This type of container runtime has not been implemented yet"
+}
+
 type ContainerEventType uint8
-const(
+
+const (
 	ContainerStartEvent ContainerEventType = iota
 	ContainerStopEvent
 	ContainerErrrorEvent
 )
 
-type ContainerEvent struct{
-	action	ContainerEventType
+type ContainerEvent struct {
+	action  ContainerEventType
 	details ContainerDetails
-	errors	error
+	errors  error
 }
 
 type ContainerEventChannel chan ContainerEvent
 
-
 type ContainerRuntime interface {
+	Init() ([]ContainerDetails, error)
+	Watch(ContainerEventChannel) error
 }
 
 type ContainerDetails struct {
@@ -57,14 +67,14 @@ type ContainerDetails struct {
 
 type ContainerMapList map[string]ContainerDetails
 
-type ContainerManger struct{
-	ContainerMap ContainerMapList
+type ContainerManger struct {
+	ContainerMap    ContainerMapList
 	ContainerEvents ContainerEventChannel
 }
 
-func New() ContainerManger{
+func New() ContainerManger {
 	return ContainerManger{
-		ContainerMap: make(ContainerMapList, 100),
+		ContainerMap:    make(ContainerMapList, 100),
 		ContainerEvents: make(ContainerEventChannel),
 	}
 }
