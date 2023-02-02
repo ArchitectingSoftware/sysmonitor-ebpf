@@ -1,7 +1,7 @@
 # sysmonitor-ebpf
 This is a data collection utility using eBPF with C and Go.  The initial version captures raw syscalls, but see the backlog for things in the works. 
 
-Please note this is still a WIP, and the makefile is a mess, still needs to be cleaned up.
+Please note this is still a WIP!
 
 
 ### What does this program do?
