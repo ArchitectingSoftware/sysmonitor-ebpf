@@ -4,7 +4,7 @@ import (
 	"log"
 	"time"
 
-	"drexel.edu/cci/sysmonitor-tool/container/docker"
+	"drexel.edu/cci/sysmonitor-tool/container"
 	"drexel.edu/cci/sysmonitor-tool/syscalls"
 	"drexel.edu/cci/sysmonitor-tool/utils"
 )
@@ -36,14 +36,18 @@ func main() {
 
 	utils.SetupFlags()
 
-	d, err := docker.NewDocker()
-	if err != nil {
-		log.Fatalf("error getting ns info ", err)
-	}
-	d.InitContainers()
-	d.Debug()
+	//OLD CONTAINER CODE - DELETE ME LATER
+	/*
+		d, err := docker.NewDocker()
+		if err != nil {
+			log.Fatalf("error getting ns info ", err)
+		}
+		d.InitContainers()
+		d.Debug()
 
-	go d.Listen()
+		go d.Listen()
+	*/
+	container.New()
 
 	syscalls.RunEBPF()
 }

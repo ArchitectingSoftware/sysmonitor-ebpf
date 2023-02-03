@@ -1,18 +1,10 @@
 package container
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"text/tabwriter"
-
-	"drexel.edu/cci/sysmonitor-tool/internal"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
 )
 
 const (
@@ -46,16 +38,17 @@ const (
 )
 
 type ContainerEvent struct {
-	action  ContainerEventType
-	details ContainerDetails
-	errors  error
+	Action  ContainerEventType
+	Details ContainerDetails
+	Errors  error
 }
 
 type ContainerEventChannel chan ContainerEvent
+type ContainerManagerStopChannel chan string
 
 type ContainerRuntime interface {
-	Init() ([]ContainerDetails, error)
-	Watch(ContainerEventChannel) error
+	// Init() ([]ContainerDetails, error)
+	WatchContainerChanges() (ContainerManagerStopChannel, error)
 }
 
 type ContainerDetails struct {
@@ -67,18 +60,70 @@ type ContainerDetails struct {
 
 type ContainerMapList map[string]ContainerDetails
 
-type ContainerManger struct {
-	ContainerMap    ContainerMapList
-	ContainerEvents ContainerEventChannel
+type ContainerManager struct {
+	ContainerMap      ContainerMapList
+	ContainerEvents   ContainerEventChannel
+	containerRuntimes map[RuntimeType]ContainerRuntime
 }
 
-func New() ContainerManger {
-	return ContainerManger{
-		ContainerMap:    make(ContainerMapList, 100),
-		ContainerEvents: make(ContainerEventChannel),
+func New() ContainerManager {
+	cm := ContainerManager{
+		ContainerMap:      make(ContainerMapList, 100),
+		ContainerEvents:   make(ContainerEventChannel, 10),
+		containerRuntimes: make(map[RuntimeType]ContainerRuntime, 10),
 	}
+
+	//Now start the runtimes
+	//1. Docker
+	dm, err := NewDockerManager(&cm)
+	if err != nil {
+		log.Print("error creating docker container manager")
+	}
+	cm.containerRuntimes[DockerRuntime] = dm
+	dm.WatchContainerChanges()
+
+	go cm.cmDaemon()
+	cm.PrintContainers()
+	return cm
 }
 
+func (cm *ContainerManager) cmDaemon() {
+	for {
+		select {
+		case ce := <-cm.ContainerEvents:
+			switch ce.Action {
+			case ContainerStartEvent:
+				//add the container
+				cm.ContainerMap[ce.Details.ContainerID] = ce.Details
+				log.Printf("---> Container just added %s", ce.Details.ContainerID[:10])
+			case ContainerStopEvent:
+				log.Printf("<--- Container just removed %s", ce.Details.ContainerID[:10])
+				delete(cm.ContainerMap, ce.Details.ContainerID)
+			case ContainerErrrorEvent:
+				log.Printf("<!!!! Container error event %s", ce.Errors)
+			default:
+				log.Print("Got Unexpected Event from container manager")
+			}
+		}
+	}
+
+}
+
+func (cm *ContainerManager) PrintContainers() {
+	w := tabwriter.NewWriter(os.Stdout, 0, 8, 1, '\t', tabwriter.AlignRight)
+
+	fmt.Println("DUMPING CONTAINER LIST")
+	fmt.Fprintln(w, "CONTAINER ID\tPID\tNAMESPACE")
+	for _, v := range cm.ContainerMap {
+		fmt.Fprintf(w, "%s\t%d\t%d\n", v.ContainerID[:10], v.PID, v.LinuxNS)
+	}
+	fmt.Fprintln(w, "")
+	w.Flush()
+	//log.Printf("%+v", d.cMap)
+}
+
+// / The code below should go soon
+/*
 type DockerContainers struct {
 	client *client.Client
 	cMap   map[string]ContainerDetails
@@ -289,7 +334,7 @@ func ListContainers2() error {
 	//if err != nil {
 	//	return err
 	//}
-	/*
+
 		for _, container := range containers {
 			fmt.Printf("%s %s\n", container.ID[:10], container.Image)
 
@@ -312,6 +357,7 @@ func ListContainers2() error {
 
 			//now we have the container PID
 		}
-	*/
+
 	return nil
 }
+*/
