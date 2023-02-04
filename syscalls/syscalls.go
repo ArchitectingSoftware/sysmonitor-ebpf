@@ -22,6 +22,8 @@ type SyscallEbpfMontior struct {
 	SCObjs *syscallsObjects
 }
 
+var scmSingleton *SyscallEbpfMontior = nil
+
 // didnt really seem to need this, but a helper to set unix system limits for ebpf, including it
 // in case I figure out if I need it later :-)
 func setlimit() {
@@ -41,7 +43,22 @@ func initFilters(initMap map[string]interface{}) {
 		myPid := os.Getpid()
 		log.Printf("Filtering Monitor PID: %d from output syscalls", myPid)
 		initMap["filter_pid"] = int32(myPid)
+		if utils.ContainerOnlyFlag {
+			initMap["filter_container_only"] = bool(true)
+		} else {
+			initMap["filter_container_only"] = bool(false)
+		}
 	}
+}
+
+func addNamespace(em *ebpf.Map, nsID uint) error {
+	log.Printf("DEBUG DEBUG %d", nsID)
+	var one uint64 = 1
+	return em.Put(uint32(nsID), one)
+}
+
+func removeNamespace(em *ebpf.Map, nsId uint) error {
+	return em.Delete(uint32(nsId))
 }
 
 func ContainerEventListener(event_channel *utils.PSAgent) {
@@ -55,9 +72,28 @@ func containerEventListener(evntC <-chan interface{}) {
 			switch ce.Action {
 			case container.ContainerStartEvent:
 				//add the container
-				log.Printf("++++++> Container just added %.10s", ce.Details.ContainerID)
+
+				if scmSingleton != nil {
+					//add to object hashmap
+					err := addNamespace(scmSingleton.SCObjs.NamespaceTable, ce.Details.LinuxNS)
+					if err != nil {
+						log.Printf("error adding namespace to hash %s", err)
+					} else {
+						log.Printf("==> Registered Container %.10s with Namespace: %d",
+							ce.Details.ContainerID, ce.Details.LinuxNS)
+					}
+				}
 			case container.ContainerStopEvent:
-				log.Printf("<+++++ Container just removed %.10s", ce.Details.ContainerID)
+				if scmSingleton != nil {
+					//remove object hashmap
+					err := removeNamespace(scmSingleton.SCObjs.NamespaceTable, ce.Details.LinuxNS)
+					if err != nil {
+						log.Printf("error adding namespace to hash %s", err)
+					} else {
+						log.Printf("==> Removed monitoring Container %.10s with Namespace: %d",
+							ce.Details.ContainerID, ce.Details.LinuxNS)
+					}
+				}
 			case container.ContainerErrrorEvent:
 				log.Printf("<!!!! Container error event %s", ce.Errors)
 			default:
@@ -97,6 +133,9 @@ func InitSCMonitor() (*SyscallEbpfMontior, error) {
 		IsInit: true,
 		SCObjs: &objs,
 	}
+
+	//TODO: kind of a hack for now, but will refactor
+	scmSingleton = scm
 
 	return scm, nil
 }
