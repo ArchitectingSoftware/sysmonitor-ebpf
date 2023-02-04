@@ -36,26 +36,13 @@ func main() {
 
 	utils.SetupFlags()
 
-	//OLD CONTAINER CODE - DELETE ME LATER
-	/*
-		d, err := docker.NewDocker()
-		if err != nil {
-			log.Fatalf("error getting ns info ", err)
-		}
-		d.InitContainers()
-		d.Debug()
-
-		go d.Listen()
-	*/
 	cm := container.New()
 	defer cm.Close()
-	syscalls.ContainerEventListener(cm.PubSubManager)
 
-	scm, err := syscalls.InitSCMonitor()
+	scm, err := syscalls.InitSCWithContainerManager(&cm)
 	if err != nil {
 		log.Fatalf("error initializing sc monitor: %s", err)
 	}
 	scm.RunEBPF()
 	scm.Close()
-	//syscalls.RunEBPF()
 }

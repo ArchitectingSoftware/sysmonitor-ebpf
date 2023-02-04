@@ -18,11 +18,10 @@ import (
 )
 
 type SyscallEbpfMontior struct {
-	IsInit bool
-	SCObjs *syscallsObjects
+	isInit bool
+	scObjs *syscallsObjects
+	cMgr   *container.ContainerManager
 }
-
-var scmSingleton *SyscallEbpfMontior = nil
 
 // didnt really seem to need this, but a helper to set unix system limits for ebpf, including it
 // in case I figure out if I need it later :-)
@@ -61,11 +60,27 @@ func removeNamespace(em *ebpf.Map, nsId uint) error {
 	return em.Delete(uint32(nsId))
 }
 
-func ContainerEventListener(event_channel *utils.PSAgent) {
-	sub := event_channel.Subscribe(container.ContainerMessageTopic)
-	go containerEventListener(sub)
+func (scm *SyscallEbpfMontior) containerEventListener() {
+	eventChannel := scm.cMgr.PubSubManager
+	if scm.cMgr == nil || scm.cMgr.PubSubManager == nil {
+		return
+	}
+
+	//init existing containers (if any)
+	for _, v := range scm.cMgr.ContainerMap {
+		err := addNamespace(scm.scObjs.NamespaceTable, v.LinuxNS)
+		if err != nil {
+			log.Printf("error adding namespace to hash %s", err)
+		} else {
+			log.Printf("==> Registered Container %.10s with Namespace: %d",
+				v.ContainerID, v.LinuxNS)
+		}
+	}
+
+	sub := eventChannel.Subscribe(container.ContainerMessageTopic)
+	go scm.containerEventDaemon(sub)
 }
-func containerEventListener(evntC <-chan interface{}) {
+func (scm *SyscallEbpfMontior) containerEventDaemon(evntC <-chan interface{}) {
 	for evnt := range evntC {
 		switch ce := evnt.(type) {
 		case container.ContainerEvent:
@@ -73,9 +88,9 @@ func containerEventListener(evntC <-chan interface{}) {
 			case container.ContainerStartEvent:
 				//add the container
 
-				if scmSingleton != nil {
+				if scm.cMgr != nil {
 					//add to object hashmap
-					err := addNamespace(scmSingleton.SCObjs.NamespaceTable, ce.Details.LinuxNS)
+					err := addNamespace(scm.scObjs.NamespaceTable, ce.Details.LinuxNS)
 					if err != nil {
 						log.Printf("error adding namespace to hash %s", err)
 					} else {
@@ -84,9 +99,9 @@ func containerEventListener(evntC <-chan interface{}) {
 					}
 				}
 			case container.ContainerStopEvent:
-				if scmSingleton != nil {
+				if scm.cMgr != nil {
 					//remove object hashmap
-					err := removeNamespace(scmSingleton.SCObjs.NamespaceTable, ce.Details.LinuxNS)
+					err := removeNamespace(scm.scObjs.NamespaceTable, ce.Details.LinuxNS)
 					if err != nil {
 						log.Printf("error adding namespace to hash %s", err)
 					} else {
@@ -105,7 +120,7 @@ func containerEventListener(evntC <-chan interface{}) {
 	}
 }
 
-func InitSCMonitor() (*SyscallEbpfMontior, error) {
+func InitSCWithContainerManager(cm *container.ContainerManager) (*SyscallEbpfMontior, error) {
 	spec, err := loadSyscalls()
 	if err != nil {
 		log.Fatalf("spec read")
@@ -130,19 +145,29 @@ func InitSCMonitor() (*SyscallEbpfMontior, error) {
 	//defer objs.Close()
 
 	scm := &SyscallEbpfMontior{
-		IsInit: true,
-		SCObjs: &objs,
+		isInit: true,
+		scObjs: &objs,
+		cMgr:   cm,
+	}
+
+	if cm != nil {
+		//we have a container manager, so init and watch for changes
+		scm.containerEventListener()
 	}
 
 	//TODO: kind of a hack for now, but will refactor
-	scmSingleton = scm
+	//scmSingleton = scm
 
 	return scm, nil
 }
 
+func InitSCMonitor() (*SyscallEbpfMontior, error) {
+	return InitSCWithContainerManager(nil)
+}
+
 func (scm *SyscallEbpfMontior) Close() {
 	log.Printf("Closing ebpf monitor, freeing resources")
-	scm.SCObjs.Close()
+	scm.scObjs.Close()
 }
 
 // Run the ebpf handler
@@ -174,7 +199,7 @@ func (scm *SyscallEbpfMontior) RunEBPF() error {
 		defer objs.Close()
 	*/
 
-	tp, err := link.Tracepoint("raw_syscalls", "sys_exit", scm.SCObjs.SysExit, nil)
+	tp, err := link.Tracepoint("raw_syscalls", "sys_exit", scm.scObjs.SysExit, nil)
 	if err != nil {
 		log.Printf("link failure %s", err)
 		return err
@@ -212,7 +237,7 @@ func (scm *SyscallEbpfMontior) RunEBPF() error {
 			 * code.  Yea, its ugly, but still much appreciated of the cilium folks for building
 			 * an excellent wrapper for libbpf
 			 */
-			cnt, err := scm.SCObjs.SyscallTable.BatchLookupAndDelete(nil, &nextKey, ks, vs, nil)
+			cnt, err := scm.scObjs.SyscallTable.BatchLookupAndDelete(nil, &nextKey, ks, vs, nil)
 
 			//Dont like it myself but this error is returned to indicate that all data has been received
 			if errors.Is(err, ebpf.ErrKeyNotExist) {
