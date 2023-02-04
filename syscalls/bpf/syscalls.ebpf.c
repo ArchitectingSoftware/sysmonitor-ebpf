@@ -14,6 +14,7 @@ const volatile bool filter_failed = false;
 const volatile int filter_errno = false;
 const volatile pid_t filter_pid = 0;			//set to PID of monitor if you want to exclude these messages
 const volatile pid_t monitor_pid = 0; 			//set to PID if you only want to monitor that particular process
+const volatile bool filter_container_only = false; //set to true if you only want to monitor specified container pid namespaces
 const volatile bool filter_monitor_events = false;
 
 #define MAX_ENTRIES 512
@@ -82,14 +83,7 @@ int sys_exit(struct trace_event_raw_sys_exit *args)
 
 	u64 id = bpf_get_current_pid_tgid();
 	pid_t pid = id >> 32;
-
-	//hack starts here
-    //struct task_struct *task = (struct task_struct *)bpf_get_current_task();
-	//struct nsproxy *namespaceproxy = BPF_CORE_READ(task, nsproxy);
-	//u32 pid_ns_id =
-    //    BPF_CORE_READ(namespaceproxy, pid_ns_for_children, ns.inum);
-	//hack ends here
-	u32 ps_ns_id = get_namespace_id();
+	u32 ps_ns_id = 0;
 
 	//u32 pns_id = (u32) BPF_CORE_READ(task, nsproxy, pid_ns_for_children, ns.inum);
 
@@ -103,23 +97,34 @@ int sys_exit(struct trace_event_raw_sys_exit *args)
 		//that sometimes ebpf returns -1 for a syscall identifier basically 0xFFFFFFFF
 		if(key == (u32)-1)
 			return 0;
-		//filter out a pid - for example dont capture syscalls from the monitor
-		if ((filter_pid) && (filter_pid == pid)){
-			//u32 nid = ns_id;
-			//bpf_printk("filtering event for monitor %u", pid_ns_id );
-			return 0;
+		
+		//Check for filters if we are not doing just containers
+		if (!filter_container_only) {
+			//filter a specific PID if enabled
+			if ((filter_pid) && (filter_pid == pid)){
+				//u32 nid = ns_id;
+				//bpf_printk("filtering event for monitor %u", pid_ns_id );
+				return 0;
+			}
+		} else  { //we are in container only mode, see if this is an event of interest 
+			ps_ns_id = get_namespace_id();	//get namspace of current PID
+			u32 *val;
+			val = bpf_map_lookup_elem(&namespace_table, &ps_ns_id);
+			if (!val || *val == 0)
+				return 0;
 		}
-		//if we want to monior only one pid, monitor pid must be current pid
+
+		//handle filtering out of the monitor syscalls if enabled
 		if((monitor_pid) && (monitor_pid != pid))
 			return 0;
 	//END OF FILTERING
 
+	//we have an event of interest, so add it to the syscall hashmap
 	val = bpf_map_lookup_or_try_init(&syscall_table, &key, &zero);
 	
 	if (val) {
 		__sync_fetch_and_add(val,one);
 	}
 	
-
 	return 0;
 }

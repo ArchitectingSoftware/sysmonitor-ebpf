@@ -9,6 +9,7 @@ import (
 	"time"
 
 	// "drexel.edu/cci/sysmonitor-tool/utils"
+	"drexel.edu/cci/sysmonitor-tool/container"
 	"drexel.edu/cci/sysmonitor-tool/utils"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -35,6 +36,31 @@ func initFilters(initMap map[string]interface{}) {
 		myPid := os.Getpid()
 		log.Printf("Filtering Monitor PID: %d from output syscalls", myPid)
 		initMap["filter_pid"] = int32(myPid)
+	}
+}
+
+func ContainerEventListener(event_channel *utils.PSAgent) {
+	sub := event_channel.Subscribe(container.ContainerMessageTopic)
+	go containerEventListener(sub)
+}
+func containerEventListener(evntC <-chan interface{}) {
+	for evnt := range evntC {
+		switch ce := evnt.(type) {
+		case container.ContainerEvent:
+			switch ce.Action {
+			case container.ContainerStartEvent:
+				//add the container
+				log.Printf("++++++> Container just added %.10s", ce.Details.ContainerID)
+			case container.ContainerStopEvent:
+				log.Printf("<+++++ Container just removed %.10s", ce.Details.ContainerID)
+			case container.ContainerErrrorEvent:
+				log.Printf("<!!!! Container error event %s", ce.Errors)
+			default:
+				log.Print("Got Unexpected Event from container manager")
+			}
+		default:
+			log.Print("got an unexpected event")
+		}
 	}
 }
 

@@ -19,6 +19,7 @@ var (
 	LogNameFlag         string        = "data.log"      //default log name
 	LoggingEnabledFlag  bool          = false           //enabling logging
 	RemoveLogFileFlag   bool          = false           //remove log file
+	ContainerOnlyFlag   bool          = true            //monitor containers only
 )
 
 func LogFilePath() string {
@@ -44,6 +45,7 @@ func SetupFlags() {
 	flag.BoolVar(&LoggingEnabledFlag, "l", false, "enable logging, see -f for the log file name")
 	flag.StringVar(&LogNameFlag, "f", "data.log", "name of the log file, log files are placed in /var/log")
 	flag.BoolVar(&RemoveLogFileFlag, "delete-logs", false, "delete log files, this will just return after done")
+	flag.BoolVar(&ContainerOnlyFlag, "co", true, "just monitor container data")
 
 	flag.Parse()
 
@@ -73,5 +75,10 @@ func SetupFlags() {
 		log.Printf("\tLogging Enabled - Logs written to: %s", LogFilePath())
 	} else {
 		log.Print("\tLogging Disabled, use the -l flag to enable on startup")
+	}
+	if ContainerOnlyFlag {
+		log.Print("\tCONTAINER ONLY Mode - just monitoring container data")
+	} else {
+		log.Print("\tALL SYSTEM Mode - monitoring all system data")
 	}
 }

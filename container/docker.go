@@ -28,8 +28,8 @@ const RuntimeName = "docker"
 
 type DockerContainers struct {
 	client *client.Client
-	cMap   map[string]ContainerDetails
-	ctx    context.Context
+	//cMap   map[string]ContainerDetails
+	ctx context.Context
 	//events container.ContainerEventChannel
 	//cmap   container.ContainerMapList
 	cmgr         *ContainerManager
@@ -45,8 +45,8 @@ func NewDockerManager(mgr *ContainerManager) (DockerContainers, error) {
 	defer cli.Close()
 
 	dc := DockerContainers{
-		client:       cli,
-		cMap:         make(map[string]ContainerDetails, 64),
+		client: cli,
+		//cMap:         make(map[string]ContainerDetails, 64),
 		ctx:          context.Background(),
 		cmgr:         mgr,
 		watcherAbort: make(ContainerManagerStopChannel),
@@ -145,7 +145,7 @@ loop:
 				Details: ContainerDetails{},
 				Errors:  err,
 			}
-			d.cmgr.ContainerEvents <- ce
+			d.cmgr.PubSubManager.Publish(ContainerMessageTopic, ce)
 		case msg := <-msgs:
 			raw_action := msg.Action
 			container_id := msg.ID
@@ -160,13 +160,22 @@ loop:
 					cDetails, err := containerDetailsFromCid(d.ctx, d.client, container_id)
 					if err != nil {
 						log.Printf("error from getting container details %s", err)
+						ce := ContainerEvent{
+							Action: ContainerErrrorEvent,
+							Errors: err,
+						}
+						d.cmgr.PubSubManager.Publish(ContainerMessageTopic, ce)
+						break
 					}
+
+					/** OLD WAY
 					_, found := d.cMap[cDetails.ContainerID]
 					if found {
 						log.Print("found unexpected container in container map")
 					}
 					//add it
 					d.cMap[cDetails.ContainerID] = cDetails
+					**/
 
 					//Announce new container
 					ce := ContainerEvent{
@@ -174,8 +183,10 @@ loop:
 						Details: cDetails,
 						Errors:  nil,
 					}
-					d.cmgr.ContainerEvents <- ce
+					d.cmgr.PubSubManager.Publish(ContainerMessageTopic, ce)
 				case "die":
+					/** OLD WAY
+
 					_, found := d.cMap[container_id]
 					if !found {
 						log.Print("trying to remove a container but its not in the map")
@@ -186,13 +197,26 @@ loop:
 					if found {
 						log.Print("container still in map after delete")
 					}
+					***/
 					//Announce removal of container
+					_, found := d.cmgr.ContainerMap[container_id]
+					if !found {
+						log.Print("trying to remove a container but its not in the map")
+						err := errors.New("container map was empty for an expected container")
+						ce := ContainerEvent{
+							Action: ContainerErrrorEvent,
+							Errors: err,
+						}
+						d.cmgr.PubSubManager.Publish(ContainerMessageTopic, ce)
+						break
+					}
+					cDetails := d.cmgr.ContainerMap[container_id]
 					ce := ContainerEvent{
 						Action:  ContainerStopEvent,
 						Details: cDetails,
 						Errors:  nil,
 					}
-					d.cmgr.ContainerEvents <- ce
+					d.cmgr.PubSubManager.Publish(ContainerMessageTopic, ce)
 				default:
 					log.Printf("got an unexpected event from docker %s", action[0])
 				}
@@ -208,7 +232,7 @@ func (d *DockerContainers) Debug() {
 	w := tabwriter.NewWriter(os.Stdout, 0, 8, 1, '\t', tabwriter.AlignRight)
 
 	fmt.Fprintln(w, "CONTAINER ID\tPID\tNAMESPACE")
-	for _, v := range d.cMap {
+	for _, v := range d.cmgr.ContainerMap {
 		fmt.Fprintf(w, "%s\t%d\t%d\n", v.ContainerID[:10], v.PID, v.LinuxNS)
 	}
 	fmt.Fprintln(w, "")

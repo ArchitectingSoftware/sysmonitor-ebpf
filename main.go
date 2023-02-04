@@ -47,7 +47,8 @@ func main() {
 
 		go d.Listen()
 	*/
-	container.New()
-
+	cm := container.New()
+	defer cm.Close()
+	syscalls.ContainerEventListener(cm.PubSubManager)
 	syscalls.RunEBPF()
 }

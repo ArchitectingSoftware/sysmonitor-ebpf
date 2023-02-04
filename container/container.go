@@ -5,10 +5,13 @@ import (
 	"log"
 	"os"
 	"text/tabwriter"
+
+	"drexel.edu/cci/sysmonitor-tool/utils"
 )
 
 const (
-	defaultDocker = "/var/run/docker.sock"
+	defaultDocker                           = "/var/run/docker.sock"
+	ContainerMessageTopic utils.PSTopicType = "container-topic"
 )
 
 type RuntimeType uint8
@@ -63,15 +66,20 @@ type ContainerMapList map[string]ContainerDetails
 type ContainerManager struct {
 	ContainerMap      ContainerMapList
 	ContainerEvents   ContainerEventChannel
+	PubSubManager     *utils.PSAgent
 	containerRuntimes map[RuntimeType]ContainerRuntime
 }
 
 func New() ContainerManager {
 	cm := ContainerManager{
 		ContainerMap:      make(ContainerMapList, 100),
-		ContainerEvents:   make(ContainerEventChannel, 10),
+		ContainerEvents:   make(ContainerEventChannel),
+		PubSubManager:     utils.NewAgent(),
 		containerRuntimes: make(map[RuntimeType]ContainerRuntime, 10),
 	}
+
+	sub := cm.PubSubManager.Subscribe(ContainerMessageTopic)
+	go cm.cmDaemon(sub)
 
 	//Now start the runtimes
 	//1. Docker
@@ -82,22 +90,49 @@ func New() ContainerManager {
 	cm.containerRuntimes[DockerRuntime] = dm
 	dm.WatchContainerChanges()
 
-	go cm.cmDaemon()
+	//go cm.cmDaemon(cm.ContainerEvents)
 	cm.PrintContainers()
 	return cm
 }
-
-func (cm *ContainerManager) cmDaemon() {
-	for {
-		select {
-		case ce := <-cm.ContainerEvents:
+func (cm *ContainerManager) cmDaemon(evntC <-chan interface{}) {
+	for evnt := range evntC {
+		switch ce := evnt.(type) {
+		case ContainerEvent:
 			switch ce.Action {
 			case ContainerStartEvent:
 				//add the container
 				cm.ContainerMap[ce.Details.ContainerID] = ce.Details
-				log.Printf("---> Container just added %s", ce.Details.ContainerID[:10])
+				log.Printf("---> Container just added %.10s", ce.Details.ContainerID)
 			case ContainerStopEvent:
-				log.Printf("<--- Container just removed %s", ce.Details.ContainerID[:10])
+				log.Printf("<--- Container just removed %.10s", ce.Details.ContainerID)
+				delete(cm.ContainerMap, ce.Details.ContainerID)
+			case ContainerErrrorEvent:
+				log.Printf("<!!!! Container error event %s", ce.Errors)
+			default:
+				log.Print("Got Unexpected Event from container manager")
+			}
+		default:
+			log.Print("got an unexpected event")
+		}
+	}
+}
+
+func (cm *ContainerManager) Close() {
+	cm.PubSubManager.Close()
+}
+
+// delete in a refactor
+func (cm *ContainerManager) cmDaemon2(evnt <-chan ContainerEvent) {
+	for {
+		select {
+		case ce := <-evnt:
+			switch ce.Action {
+			case ContainerStartEvent:
+				//add the container
+				cm.ContainerMap[ce.Details.ContainerID] = ce.Details
+				log.Printf("---> Container just added %.10s", ce.Details.ContainerID)
+			case ContainerStopEvent:
+				log.Printf("<--- Container just removed %.10s", ce.Details.ContainerID)
 				delete(cm.ContainerMap, ce.Details.ContainerID)
 			case ContainerErrrorEvent:
 				log.Printf("<!!!! Container error event %s", ce.Errors)
@@ -106,7 +141,6 @@ func (cm *ContainerManager) cmDaemon() {
 			}
 		}
 	}
-
 }
 
 func (cm *ContainerManager) PrintContainers() {
