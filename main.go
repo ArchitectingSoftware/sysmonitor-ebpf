@@ -50,5 +50,12 @@ func main() {
 	cm := container.New()
 	defer cm.Close()
 	syscalls.ContainerEventListener(cm.PubSubManager)
-	syscalls.RunEBPF()
+
+	scm, err := syscalls.InitSCMonitor()
+	if err != nil {
+		log.Fatalf("error initializing sc monitor: %s", err)
+	}
+	scm.RunEBPF()
+	scm.Close()
+	//syscalls.RunEBPF()
 }

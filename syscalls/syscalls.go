@@ -17,6 +17,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type SyscallEbpfMontior struct {
+	IsInit bool
+	SCObjs *syscallsObjects
+}
+
 // didnt really seem to need this, but a helper to set unix system limits for ebpf, including it
 // in case I figure out if I need it later :-)
 func setlimit() {
@@ -64,11 +69,7 @@ func containerEventListener(evntC <-chan interface{}) {
 	}
 }
 
-// Run the ebpf handler
-func RunEBPF() {
-
-	eventLog, _ := utils.NewEventLogger()
-
+func InitSCMonitor() (*SyscallEbpfMontior, error) {
 	spec, err := loadSyscalls()
 	if err != nil {
 		log.Fatalf("spec read")
@@ -81,19 +82,63 @@ func RunEBPF() {
 
 	err = spec.RewriteConstants(initFilter)
 	if err != nil {
-		log.Fatalf("constant does not exist")
+		log.Printf("constant does not exist")
+		return &SyscallEbpfMontior{}, err
 	}
 
 	objs := syscallsObjects{}
 	if err := spec.LoadAndAssign(&objs, nil); err != nil {
-		log.Fatalf("loading objects: %s", err)
+		log.Printf("loading objects error: %s", err)
+		return &SyscallEbpfMontior{}, err
+	}
+	//defer objs.Close()
+
+	scm := &SyscallEbpfMontior{
+		IsInit: true,
+		SCObjs: &objs,
 	}
 
-	defer objs.Close()
+	return scm, nil
+}
 
-	tp, err := link.Tracepoint("raw_syscalls", "sys_exit", objs.SysExit, nil)
+func (scm *SyscallEbpfMontior) Close() {
+	log.Printf("Closing ebpf monitor, freeing resources")
+	scm.SCObjs.Close()
+}
+
+// Run the ebpf handler
+func (scm *SyscallEbpfMontior) RunEBPF() error {
+
+	eventLog, _ := utils.NewEventLogger()
+
+	/*
+		spec, err := loadSyscalls()
+		if err != nil {
+			log.Fatalf("spec read")
+		}
+
+		initFilter := map[string]interface{}{}
+
+		//now init the filters
+		initFilters(initFilter)
+
+		err = spec.RewriteConstants(initFilter)
+		if err != nil {
+			log.Fatalf("constant does not exist")
+		}
+
+		objs := syscallsObjects{}
+		if err := spec.LoadAndAssign(&objs, nil); err != nil {
+			log.Fatalf("loading objects: %s", err)
+		}
+
+		defer objs.Close()
+	*/
+
+	tp, err := link.Tracepoint("raw_syscalls", "sys_exit", scm.SCObjs.SysExit, nil)
 	if err != nil {
-		log.Fatalf("link failure %s", err)
+		log.Printf("link failure %s", err)
+		return err
 	}
 	defer tp.Close()
 
@@ -128,7 +173,7 @@ func RunEBPF() {
 			 * code.  Yea, its ugly, but still much appreciated of the cilium folks for building
 			 * an excellent wrapper for libbpf
 			 */
-			cnt, err := objs.SyscallTable.BatchLookupAndDelete(nil, &nextKey, ks, vs, nil)
+			cnt, err := scm.SCObjs.SyscallTable.BatchLookupAndDelete(nil, &nextKey, ks, vs, nil)
 
 			//Dont like it myself but this error is returned to indicate that all data has been received
 			if errors.Is(err, ebpf.ErrKeyNotExist) {
@@ -168,4 +213,6 @@ func RunEBPF() {
 			break
 		}
 	}
+
+	return nil
 }
