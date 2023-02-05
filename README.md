@@ -5,7 +5,11 @@ Please note this is still a WIP!
 
 
 ### What does this program do?
-This program installs an eBPF filter in the kernel and monitors all syscalls in the machine.  The userspace program interfaces with the kernel program to pull statistics.  There are a number of command line flags that help you control the interval of getting aggregated data from the kernel, and the total duration of probing the kernel.  The command line arguments are described below. 
+This program installs an eBPF filter in the kernel and monitors all syscalls in the machine.  The userspace program interfaces with the kernel program to pull statistics.  There are a number of command line flags that help you control the interval of getting aggregated data from the kernel, and the total duration of probing the kernel.  The command line arguments are described below.
+
+By default this tool monitors all processes in the kernel and captures all system calls.  The PID for the monitor itself is filtered out from the output data.  The `-m` flag will override and include the monitor data.  Other filtering options are `-p` to capture a specific process and its children, or `-co` to monitor containers.  
+
+Container monitoring is based on Linux namespaces.  Prior to starting the eBPF monitoring existing containers are queried from the system and installed in the eBPF filter.  This tool then monitors for additional containers starting and stopping and adjusts the internal eBPF maps appropriately.  Currently, only Docker is supported, in the future additional container managers such as CRIO are planned. 
 
 ### Steps To Build and Run
 First, this is an eBPF program, so even though its written in Go, it can only be executed on a linux based machine.  I have included a `VagrantFile` if you want to run in a virtual machine. If you are running on a linux machine, the `VagrantFile` outlines all of the dependencies that are required to build eBPF programs. 
@@ -27,12 +31,19 @@ The makefile also includes a `clean` rule to delete the generated files and bina
 This tool has a number of command line options, you can learn about them via the `-h` flag
 
 ```
-vagrant@ubuntu:~/research/sysmonitor-ebpf$ sudo ./sysmonitor-tool -h
+vagrant@ubuntu:~/code/ebpf/sysmonitor-ebpf$ ./sysmonitor-tool -h
 Usage of ./sysmonitor-tool:
+  -co
+        just monitor container data (default true)
   -d duration
         total time to run - build time string using 'h', 'm', 's' (default 1m0s)
+  -delete-logs
+        delete log files, this will just return after done
+  -f string
+        name of the log file, log files are placed in /var/log (default "data.log")
   -i duration
         collection frequency in seconds - build time string using 'h', 'm', 's' (default 5s)
+  -l    enable logging, see -f for the log file name
   -m    include monitor data in capture
   -n int
         number of intervals to run, -1 keep running (default 100)
