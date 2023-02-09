@@ -10,6 +10,7 @@
             "request": "launch",
             "mode": "auto",
             "program": "${fileDirname}",
+            "args":["-v"],
             "console": "integratedTerminal",
             "asRoot": true
         }

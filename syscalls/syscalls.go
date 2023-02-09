@@ -246,11 +246,10 @@ func (scm *SyscallEbpfMontior) RunEBPF() error {
 				for i := 0; i < cnt; i++ {
 					outputMap[ks[i]] = vs[i]
 				}
+				rt := time.Until(finishTime).Round(time.Second).String()
+				log.Printf("%s Remaining: Received stats on %d syscalls from kernel", rt, cnt)
 				if utils.VerboseFlag {
 					kPrinter.PrintKernelData(outputMap)
-				} else {
-					rt := time.Until(finishTime).Round(time.Second).String()
-					log.Printf("%s Remaining: Received stats on %d syscalls from kernel", rt, cnt)
 				}
 				break //exit the loop when done
 			}
