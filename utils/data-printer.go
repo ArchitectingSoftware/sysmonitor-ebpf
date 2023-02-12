@@ -3,7 +3,7 @@ package utils
 import (
 	"log"
 
-	"drexel.edu/cci/sysmonitor-tool/syscalls/sysnames"
+	"drexel.edu/cci/sysmonitor-tool/utils/sysnames"
 )
 
 type KernelMap map[uint32]uint64

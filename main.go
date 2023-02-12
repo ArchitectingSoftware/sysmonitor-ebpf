@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"drexel.edu/cci/sysmonitor-tool/container"
-	"drexel.edu/cci/sysmonitor-tool/syscalls"
+	"drexel.edu/cci/sysmonitor-tool/monitors/syscalls"
 	"drexel.edu/cci/sysmonitor-tool/utils"
 )
 
@@ -39,10 +39,17 @@ func main() {
 	cm := container.New()
 	defer cm.Close()
 
-	scm, err := syscalls.InitSCWithContainerManager(&cm)
-	if err != nil {
-		log.Fatalf("error initializing sc monitor: %s", err)
-	}
-	scm.RunEBPF()
+	scm := syscalls.NewWithContainerManager(&cm)
+	scm.Init()
+	scm.Start()
 	scm.Close()
+
+	/*
+		scm, err := syscalls.InitSCWithContainerManager(&cm)
+		if err != nil {
+			log.Fatalf("error initializing sc monitor: %s", err)
+		}
+		scm.RunEBPF()
+		scm.Close()
+	*/
 }

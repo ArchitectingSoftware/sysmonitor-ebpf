@@ -1,6 +1,6 @@
-package syscalls
+package syscalls_old
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags $BPF_CFLAGS syscalls ./bpf/syscalls.ebpf.c -- -I/usr/include/bpf -I. -I../../includes
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags $BPF_CFLAGS syscalls_old ./bpf/syscalls_old.ebpf.c -- -I/usr/include/bpf -I. -I../../includes
 
 import (
 	"errors"
@@ -19,7 +19,7 @@ import (
 
 type SyscallEbpfMontior struct {
 	isInit bool
-	scObjs *syscallsObjects
+	scObjs *syscalls_oldObjects
 	cMgr   *container.ContainerManager
 }
 
@@ -121,7 +121,7 @@ func (scm *SyscallEbpfMontior) containerEventDaemon(evntC <-chan interface{}) {
 }
 
 func InitSCWithContainerManager(cm *container.ContainerManager) (*SyscallEbpfMontior, error) {
-	spec, err := loadSyscalls()
+	spec, err := loadSyscalls_old()
 	if err != nil {
 		log.Fatalf("spec read")
 	}
@@ -137,7 +137,7 @@ func InitSCWithContainerManager(cm *container.ContainerManager) (*SyscallEbpfMon
 		return &SyscallEbpfMontior{}, err
 	}
 
-	objs := syscallsObjects{}
+	objs := syscalls_oldObjects{}
 	if err := spec.LoadAndAssign(&objs, nil); err != nil {
 		log.Printf("loading objects error: %s", err)
 		return &SyscallEbpfMontior{}, err

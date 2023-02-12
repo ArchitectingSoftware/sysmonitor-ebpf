@@ -3,7 +3,8 @@ APP=sysmonitor-tool
 CFLAGS := -O2 -g -Wall -Werror $(CFLAGS)
 BPF_CFLAGS := $(CFLAGS)
 
-EBPF_FILES := syscalls/syscalls.go 
+EBPF_FILES :=  monitors/sysstream/bpf/syscalls.ebpf.c  \
+			   monitors/sysstream/bpf/sysstream.ebpf.c
 GEN_EBPF_FILES := $(shell find . -type f -name '*_bpfe*.go')
 GOLANG_FILES := $(shell find . -name '*.go')
 EBPF_SRC_FILES := $(shell find . -name '*.ebpf.c')
@@ -50,13 +51,14 @@ gogen: $(GEN_EBPF_FILES) gogenerate
 
 #case when a source file changes
 $(GEN_EBPF_FILES): $(EBPF_SRC_FILES)
-	go generate $(EBPF_FILES)
+	go generate ./...
 
 #case when the generated files do not exist
 .PHONY: gogenerate
 gogenerate:
 ifeq ("$(wildcard $(GEN_EBPF_FILES))","")
-	go generate $(EBPF_FILES)
+	# go generate $(EBPF_FILES)
+	go generate ./...
 endif
 
 
@@ -68,10 +70,10 @@ vmlinuxgen:  includes/vmlinux.h
 # Generate the syscalls name to number mathing for your hardware architecture
 # you must have the ausyscall utility installed on your machine for this to work
 syscalls/sysnames/syscalls.csv: 
-	-ausyscall --dump > syscalls/sysnames/syscalls.csv
-	-sed -i '1d' syscalls/sysnames/syscalls.csv
+	-ausyscall --dump > utils/sysnames/syscalls.csv
+	-sed -i '1d' utils/sysnames/syscalls.csv
 .PHONY: syscallgen
-syscallgen:  syscalls/sysnames/syscalls.csv
+syscallgen:  utils/sysnames/syscalls.csv
 
 # Used to install go dependencies
 godeps: go.sum
