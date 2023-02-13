@@ -1,20 +1,22 @@
 package sysstream
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"log"
 	"os"
 	"time"
 
 	"drexel.edu/cci/sysmonitor-tool/container"
-	mon "drexel.edu/cci/sysmonitor-tool/monitors"
+	mon "drexel.edu/cci/sysmonitor-tool/monitors/types"
 	"drexel.edu/cci/sysmonitor-tool/utils"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
-	"golang.org/x/exp/maps"
+	"github.com/cilium/ebpf/ringbuf"
 )
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags $BPF_CFLAGS sysstream ./bpf/sysstream.ebpf.c -- -I/usr/include/bpf -I. -I../../includes
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags  $BPF_CFLAGS -type event sysstream  ./bpf/sysstream.ebpf.c -- -I/usr/include/bpf -I. -I../../includes
 
 type SysStreamMonitor struct {
 	isInit    bool
@@ -24,7 +26,7 @@ type SysStreamMonitor struct {
 	initParms map[string]interface{}
 }
 
-func NewSSWithContainerManager(cm *container.ContainerManager) *SysStreamMonitor {
+func NewWithContainerManager(cm *container.ContainerManager) *SysStreamMonitor {
 	ssm := &SysStreamMonitor{
 		isInit:    false,
 		isRunning: false,
@@ -36,8 +38,8 @@ func NewSSWithContainerManager(cm *container.ContainerManager) *SysStreamMonitor
 	return ssm
 }
 
-func NewSysStream() *SysStreamMonitor {
-	return NewSSWithContainerManager(nil)
+func New() *SysStreamMonitor {
+	return NewWithContainerManager(nil)
 }
 
 func (ss *SysStreamMonitor) Init() error {
@@ -95,7 +97,7 @@ func (ss *SysStreamMonitor) Start() error {
 		}
 	}
 
-	eventLog, _ := utils.NewEventLogger()
+	//eventLog, _ := utils.NewEventLogger()
 
 	tp, err := link.Tracepoint("raw_syscalls", "sys_exit", ss.objs.SysExit, nil)
 	if err != nil {
@@ -106,76 +108,68 @@ func (ss *SysStreamMonitor) Start() error {
 
 	log.Printf("Attached to eBPF Program in Linux Kernel")
 
-	log.Println("Waiting for events...")
-	ks := make([]uint32, 512)
-	vs := make([]uint64, 512)
-	var nextKey uint32
+	log.Printf("Getting ready to run for %s - CTRL+C to exit earlier", utils.RunDurationFlag.String())
+	ss.isRunning = true
 
-	//map for output
-	outputMap := make(map[uint32]uint64, 512)
+	rd, err := ringbuf.NewReader(ss.objs.Events)
+	if err != nil {
+		log.Printf("opening ringbuf reader: %s", err)
+		return err
+	}
+	defer rd.Close()
 
-	//setup the timer loop
+	go ss.asycTicker(rd)
+
+	var event sysstreamEvent
+	var totalEvents uint64 = 0
+
+	for {
+		//read will block until messages start streaming
+		record, err := rd.Read()
+		if err != nil {
+			if errors.Is(err, ringbuf.ErrClosed) {
+				log.Println("Received signal, exiting..")
+				break
+			}
+			log.Printf("error: reading from reader: %s", err)
+			continue
+		}
+
+		// Parse the ringbuf event entry into a bpfEvent structure.
+		if err := binary.Read(bytes.NewBuffer(record.RawSample), binary.LittleEndian, &event); err != nil {
+			log.Printf("error parsing ringbuf event: %s", err)
+			continue
+		}
+
+		//log.Printf("pid: %d\t syscall_id: %d\n", event.Pid, event.SyscallId)
+		totalEvents++
+
+		if (totalEvents % 100) == 0 {
+			log.Printf("Just processed %d events", totalEvents)
+		}
+	}
+	log.Printf("TOTAL EVENTS PROCESSED: %d", totalEvents)
+	ss.isRunning = false
+	return nil
+}
+
+func (ss *SysStreamMonitor) asycTicker(rd *ringbuf.Reader) error {
 	finishTime := time.Now().Add(utils.RunDurationFlag)
 	ticker := time.NewTicker(utils.IntervalTimeFlag)
 	defer ticker.Stop()
 
-	//play with namespaces
-	//objs.NamespaceTable.Update()
-	//
-	log.Printf("Getting ready to run for %s - CTRL+C to exit earlier", utils.RunDurationFlag.String())
-	ss.isRunning = true
 	for range ticker.C {
-		nextKey = 0 //use to make sure everything is processed
-		kPrinter := utils.NewEventPrinter()
-
-		for {
-			/*
-			 * This is a bit of an ugly api, the kernal may not return all of the data so we need
-			 * to loop and preserve nextKey to get the next batch of data if a partial result
-			 * is sent back to us.  The data is finished when we get the ErrKeyNotExist error
-			 * code.  Yea, its ugly, but still much appreciated of the cilium folks for building
-			 * an excellent wrapper for libbpf
-			 */
-			cnt, err := ss.objs.SyscallTable.BatchLookupAndDelete(nil, &nextKey, ks, vs, nil)
-
-			//Dont like it myself but this error is returned to indicate that all data has been received
-			if errors.Is(err, ebpf.ErrKeyNotExist) {
-				eventLog.WriteSysCallEvent(cnt, ks, vs)
-				maps.Clear(outputMap)
-				for i := 0; i < cnt; i++ {
-					outputMap[ks[i]] = vs[i]
-				}
-				rt := time.Until(finishTime).Round(time.Second).String()
-				log.Printf("%s Remaining: Received stats on %d syscalls from kernel", rt, cnt)
-				if utils.VerboseFlag {
-					kPrinter.PrintKernelData(outputMap)
-				}
-				break //exit the loop when done
-			}
-			//now handle if there is any other sort of error
-			if err != nil {
-				if errors.Is(err, ebpf.ErrNotSupported) {
-					log.Fatalf("not supported error %s", err)
-				}
-			}
-			//if we are here, nextKey should be updated, need to process a partial result
-			maps.Clear(outputMap)
-			for i := 0; i < cnt; i++ {
-				outputMap[ks[i]] = vs[i]
-			}
-			if utils.VerboseFlag {
-				kPrinter.PrintKernelData(outputMap)
-			} else {
-				rt := time.Until(finishTime).Round(time.Second).String()
-				log.Printf("%s Remaining: Received stats on %d syscalls from kernel", rt, cnt)
-			}
-		}
-		//see if we are done
+		rt := time.Until(finishTime).Round(time.Second).String()
+		log.Printf("%s Remaining: listening for more syscalls", rt)
 		if time.Now().After(finishTime) {
 			break
 		}
 	}
-	ss.isRunning = false
+
+	if err := rd.Close(); err != nil {
+		log.Printf("closing ringbuf reader: %s", err)
+		return err
+	}
 	return nil
 }
 

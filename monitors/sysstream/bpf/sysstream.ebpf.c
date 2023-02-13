@@ -38,31 +38,20 @@ struct {
 	__type(value, u64);
 } namespace_table SEC(".maps");
 
+struct event {
+	u32 pid;
+	u32 syscall_id;
+};
+
+const struct event *unused __attribute__((unused)); 
+
+struct {
+	__uint(type, BPF_MAP_TYPE_RINGBUF);
+	__uint(max_entries, 1 << 24);
+} events SEC(".maps");
+
 #define TASK_COMM_LEN 16
 
-struct event_t {
-    u64 cgroup_id; // cgroup id
-    u32 host_tid;  // tid in host pid namespace
-    u32 host_pid;  // pid in host pid namespace
-    u32 host_ppid; // ppid in host pid namespace
-
-    u32 tid;  // thread id in userspace
-    u32 pid;  // process id in userspace
-    u32 ppid; // parent process id in userspace
-    u32 uid;
-    u32 gid;
-
-    u32 cgroup_ns_id;
-    u32 ipc_ns_id;
-    u32 net_ns_id;
-    u32 mount_ns_id;
-    u32 pid_ns_id;
-    u32 time_ns_id;
-    u32 user_ns_id;
-    u32 uts_ns_id;
-
-    char comm[TASK_COMM_LEN]; // the name of the executable (excluding the path)
-};
 
 //useful informagtion
 //
@@ -88,14 +77,14 @@ int sys_exit(struct trace_event_raw_sys_exit *args)
 	//u32 pns_id = (u32) BPF_CORE_READ(task, nsproxy, pid_ns_for_children, ns.inum);
 
 	u64 *val, zero = 0;
-	u32 key = args->id;
+	u32 syscall_id = args->id;
 	struct start_t *val2;
 	u64 one = 1;
 
 	//DO SOME UP FRONT FILTERING
 		//filter out when we get a -1 for a syscall, dont know why this happens but its documented
 		//that sometimes ebpf returns -1 for a syscall identifier basically 0xFFFFFFFF
-		if(key == (u32)-1)
+		if(syscall_id == (u32)-1)
 			return 0;
 		
 		//Check for filters if we are not doing just containers
@@ -119,12 +108,15 @@ int sys_exit(struct trace_event_raw_sys_exit *args)
 			return 0;
 	//END OF FILTERING
 
-	//we have an event of interest, so add it to the syscall hashmap
-	val = bpf_map_lookup_or_try_init(&syscall_table, &key, &zero);
-	
-	if (val) {
-		__sync_fetch_and_add(val,one);
+	struct event *task_info;
+	task_info = bpf_ringbuf_reserve(&events, sizeof(struct event), 0);
+	if (!task_info) {
+		return 0;
 	}
+	task_info->pid = pid;
+	task_info->syscall_id = syscall_id;
+
+	bpf_ringbuf_submit(task_info,0);
 	
 	return 0;
 }

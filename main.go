@@ -5,7 +5,8 @@ import (
 	"time"
 
 	"drexel.edu/cci/sysmonitor-tool/container"
-	"drexel.edu/cci/sysmonitor-tool/monitors/syscalls"
+	"drexel.edu/cci/sysmonitor-tool/monitors"
+	"drexel.edu/cci/sysmonitor-tool/monitors/types"
 	"drexel.edu/cci/sysmonitor-tool/utils"
 )
 
@@ -39,17 +40,23 @@ func main() {
 	cm := container.New()
 	defer cm.Close()
 
-	scm := syscalls.NewWithContainerManager(&cm)
-	scm.Init()
-	scm.Start()
-	scm.Close()
-
 	/*
-		scm, err := syscalls.InitSCWithContainerManager(&cm)
-		if err != nil {
-			log.Fatalf("error initializing sc monitor: %s", err)
-		}
-		scm.RunEBPF()
+		scm := syscalls.NewWithContainerManager(&cm)
+		scm.Start()
 		scm.Close()
 	*/
+	/*
+		ss := sysstream.NewWithContainerManager(&cm)
+		ss.Start()
+		ss.Close()
+	*/
+
+	//Newly refactored system interface
+	ss1, err := monitors.NewWithContainerManager(&cm, types.SysStream)
+	if err != nil {
+		log.Fatalf("Error creating monitor from factory interface")
+	}
+
+	ss1.Start()
+	ss1.Close()
 }

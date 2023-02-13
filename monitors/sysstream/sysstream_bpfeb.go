@@ -13,6 +13,11 @@ import (
 	"github.com/cilium/ebpf"
 )
 
+type sysstreamEvent struct {
+	Pid       uint32
+	SyscallId uint32
+}
+
 // loadSysstream returns the embedded CollectionSpec for sysstream.
 func loadSysstream() (*ebpf.CollectionSpec, error) {
 	reader := bytes.NewReader(_SysstreamBytes)
@@ -61,6 +66,7 @@ type sysstreamProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type sysstreamMapSpecs struct {
+	Events         *ebpf.MapSpec `ebpf:"events"`
 	NamespaceTable *ebpf.MapSpec `ebpf:"namespace_table"`
 	SyscallTable   *ebpf.MapSpec `ebpf:"syscall_table"`
 }
@@ -84,12 +90,14 @@ func (o *sysstreamObjects) Close() error {
 //
 // It can be passed to loadSysstreamObjects or ebpf.CollectionSpec.LoadAndAssign.
 type sysstreamMaps struct {
+	Events         *ebpf.Map `ebpf:"events"`
 	NamespaceTable *ebpf.Map `ebpf:"namespace_table"`
 	SyscallTable   *ebpf.Map `ebpf:"syscall_table"`
 }
 
 func (m *sysstreamMaps) Close() error {
 	return _SysstreamClose(
+		m.Events,
 		m.NamespaceTable,
 		m.SyscallTable,
 	)

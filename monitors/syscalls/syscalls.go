@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"drexel.edu/cci/sysmonitor-tool/container"
-	mon "drexel.edu/cci/sysmonitor-tool/monitors"
+	mon "drexel.edu/cci/sysmonitor-tool/monitors/types"
 	"drexel.edu/cci/sysmonitor-tool/utils"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
