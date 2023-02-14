@@ -17,6 +17,9 @@ Vagrant.configure("2") do |config|
     v.ssh_info_public = true
     v.gui = true
     v.linked_clone = false
+    #set to 12Mb and 4 cores, you can tune down if you want
+    v.vmx["memsize"] = "12288"
+    v.vmx["numvcpus"] = "4"
     v.vmx['displayname'] = 'CCI-Dev-1'
     v.vmx["ethernet0.virtualdev"] = "vmxnet3"
   end
@@ -33,11 +36,15 @@ Vagrant.configure("2") do |config|
     apt-get install --yes python-is-python3
     apt-get install --yes linux-tools-$(uname -r)
     apt-get install --yes python3-pip
+    apt-get install --yes python3-dev
     apt-get install --yes bpfcc-tools
     apt-get install --yes auditd
     apt-get install --yes libbpf-dev
+    apt-get install --yes jupyter-core
     snap install go --classic
     usermod -aG docker vagrant
+    timedatectl set-ntp yes
+    timedatectl set-timezone America/New_York
     # pip install bcc
   SHELL
 end
