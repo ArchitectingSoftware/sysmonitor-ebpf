@@ -3,6 +3,7 @@ package utils
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/denisbrodbeck/machineid"
 	"github.com/lithammer/shortuuid/v3"
@@ -45,8 +46,12 @@ func NewEventLogger() (EventLogger, error) {
 		MaxBackups: 3,
 		MaxAge:     28, // days
 	})
+
+	cfg := zap.NewProductionEncoderConfig()
+	cfg.EncodeTime = zapcore.TimeEncoderOfLayout("15:04:05")
+	cfg.EncodeLevel = nil
 	core := zapcore.NewCore(
-		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
+		zapcore.NewJSONEncoder(cfg),
 		w,
 		zap.InfoLevel,
 	)
@@ -65,7 +70,7 @@ func NewEventLogger() (EventLogger, error) {
 			id = shortuuid.New()
 		}
 	}
-	l.machineID = id
+	l.machineID = id[:5]
 
 	return l, nil
 }
@@ -74,10 +79,40 @@ func (e *EventLogger) WriteSysCallEvent(cnt int, k []uint32, v []uint64) {
 	if !e.canLog {
 		return
 	}
-	e.logger.Info("type/sc",
-		zap.String("mid", e.machineID),
-		zap.Int("cnt", cnt),
-		zap.Uint32s("keys", k[:cnt]),
-		zap.Uint64s("vals", v[:cnt]),
-	)
+	if cnt > 0 {
+		e.logger.Info("type/sc",
+			zap.String("mid", e.machineID),
+			zap.Int("cnt", cnt),
+			zap.Uint32s("keys", k[:cnt]),
+			zap.Uint64s("vals", v[:cnt]),
+		)
+	} else {
+		e.logger.Info("type/nil",
+			zap.String("mid", e.machineID))
+	}
 }
+
+func (e *EventLogger) WriteStartEvent() {
+	if !e.canLog {
+		return
+	}
+
+	t := time.Now()
+
+	e.logger.Info("type/start",
+		zap.String("mid", e.machineID),
+		zap.String(t.Format("20060102150405")),
+	)
+	
+	func (e *EventLogger) WriteStopEvent() {
+		if !e.canLog {
+			return
+		}
+	
+		t := time.Now()
+	
+		e.logger.Info("type/stop",
+			zap.String("mid", e.machineID),
+			zap.String(t.Format("20060102150405")),
+		)
+	}
