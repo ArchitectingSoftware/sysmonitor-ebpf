@@ -43,7 +43,7 @@ func NewWithContainerManager(cm *container.ContainerManager) *SysStreamMonitor {
 		objs:      &sysstreamObjects{},
 		cMgr:      cm,
 		initParms: map[string]interface{}{},
-		ringBuff:  rb.New[uint64](4096),
+		ringBuff:  rb.New[uint64](16384),
 	}
 	if utils.LoggingEnabledFlag {
 		var err error
