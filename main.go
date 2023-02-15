@@ -52,7 +52,7 @@ func main() {
 	*/
 
 	//Newly refactored system interface
-	ss1, err := monitors.NewWithContainerManager(&cm, types.SysCalls)
+	ss1, err := monitors.NewWithContainerManager(&cm, types.SysStream)
 	if err != nil {
 		log.Fatalf("Error creating monitor from factory interface")
 	}

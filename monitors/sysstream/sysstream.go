@@ -14,6 +14,9 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
+
+	rb "github.com/hedzr/go-ringbuf/v2"
+	"github.com/hedzr/go-ringbuf/v2/mpmc"
 )
 
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang -cflags  $BPF_CFLAGS -type event sysstream  ./bpf/sysstream.ebpf.c -- -I/usr/include/bpf -I. -I../../includes
@@ -24,6 +27,13 @@ type SysStreamMonitor struct {
 	objs      *sysstreamObjects
 	cMgr      *container.ContainerManager
 	initParms map[string]interface{}
+	ringBuff  mpmc.RingBuffer[uint64]
+	evntLog   utils.EventLogger
+}
+
+type SysStreamEvent struct {
+	P uint32 //pid
+	S uint32 //sycallId
 }
 
 func NewWithContainerManager(cm *container.ContainerManager) *SysStreamMonitor {
@@ -33,8 +43,15 @@ func NewWithContainerManager(cm *container.ContainerManager) *SysStreamMonitor {
 		objs:      &sysstreamObjects{},
 		cMgr:      cm,
 		initParms: map[string]interface{}{},
+		ringBuff:  rb.New[uint64](4096),
 	}
-
+	if utils.LoggingEnabledFlag {
+		var err error
+		ssm.evntLog, err = utils.NewEventLogger()
+		if err != nil {
+			log.Printf("Error setting up logger, continuing without logging")
+		}
+	}
 	return ssm
 }
 
@@ -48,6 +65,7 @@ func (ss *SysStreamMonitor) Init() error {
 		return nil
 	}
 
+	//kPrinter := utils.NewEventPrinter()
 	ss.initFilters()
 
 	//1. Load the compiled ebpf program
@@ -120,7 +138,8 @@ func (ss *SysStreamMonitor) Start() error {
 
 	go ss.asycTicker(rd)
 
-	var event sysstreamEvent
+	//var event sysstreamEvent
+	var event uint64
 	var totalEvents uint64 = 0
 
 	for {
@@ -141,7 +160,15 @@ func (ss *SysStreamMonitor) Start() error {
 			continue
 		}
 
-		//log.Printf("pid: %d\t syscall_id: %d\n", event.Pid, event.SyscallId)
+		//Note the kernel will emit u64 numbers as events, they are encoded
+		//with the PID being in the upper 32 bits, and the syscall ID encode
+		//in the lower 32 bits
+
+		//log.Printf("pid: %d\t syscall_id: %d\n", event>>32, event&0xFFFFFFFF)
+		if err := ss.ringBuff.Enqueue(event); err != nil {
+			log.Printf("Error putting event on internal ringbuffer: %s", err)
+		}
+
 		totalEvents++
 
 		if (totalEvents % 100) == 0 {
@@ -150,9 +177,45 @@ func (ss *SysStreamMonitor) Start() error {
 	}
 	log.Printf("TOTAL EVENTS PROCESSED: %d", totalEvents)
 	ss.isRunning = false
+
+	//for now dequeue the RB
+	elem := ss.ringBuff.Size()
+	log.Printf("RB Size %d", elem)
+
+	for !ss.ringBuff.IsEmpty() {
+		event, _ := ss.ringBuff.Get()
+		log.Printf("pid: %d\t syscall_id: %d\n", event>>32, event&0xFFFFFFFF)
+	}
 	return nil
 }
 
+func (ss *SysStreamMonitor) drainAndLogSSRingBuffer() {
+	if !utils.LoggingEnabledFlag {
+		return
+	}
+	howMany := ss.ringBuff.Quantity()
+	var pida = make([]uint32, howMany)
+	var sca = make([]uint32, howMany)
+	var loggedUntil uint32 = 0
+	for i := uint32(0); i < howMany; i++ {
+		raw, err := ss.ringBuff.Dequeue()
+		if err != nil {
+			log.Printf("Error reading ringbuffer, skipping %s", err)
+			continue
+		}
+		pida[i] = uint32(raw >> 32)
+		sca[i] = uint32(raw & 0xFFFFFFFF)
+		if (i > 0) && (i%100) == 0 {
+			ss.evntLog.WriteSysStreamEvent(100, pida[i-100:i], sca[i-100:i])
+			loggedUntil = i
+		}
+	}
+	//log the remainder
+	ss.evntLog.WriteSysStreamEvent(int(howMany-loggedUntil),
+		pida[loggedUntil:howMany],
+		sca[loggedUntil:howMany])
+
+}
 func (ss *SysStreamMonitor) asycTicker(rd *ringbuf.Reader) error {
 	finishTime := time.Now().Add(utils.RunDurationFlag)
 	ticker := time.NewTicker(utils.IntervalTimeFlag)
@@ -161,6 +224,9 @@ func (ss *SysStreamMonitor) asycTicker(rd *ringbuf.Reader) error {
 	for range ticker.C {
 		rt := time.Until(finishTime).Round(time.Second).String()
 		log.Printf("%s Remaining: listening for more syscalls", rt)
+		if utils.LoggingEnabledFlag {
+			ss.drainAndLogSSRingBuffer()
+		}
 		if time.Now().After(finishTime) {
 			break
 		}

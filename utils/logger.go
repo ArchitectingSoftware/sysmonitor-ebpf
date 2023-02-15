@@ -92,6 +92,23 @@ func (e *EventLogger) WriteSysCallEvent(cnt int, k []uint32, v []uint64) {
 	}
 }
 
+func (e *EventLogger) WriteSysStreamEvent(cnt int, pid []uint32, scid []uint32) {
+	if !e.canLog {
+		return
+	}
+	if cnt > 0 {
+		e.logger.Info("type/ss",
+			zap.String("mid", e.machineID),
+			zap.Int("cnt", cnt),
+			zap.Uint32s("pid", pid[:cnt]),
+			zap.Uint32s("sc", scid[:cnt]),
+		)
+	} else {
+		e.logger.Info("type/nil",
+			zap.String("mid", e.machineID))
+	}
+}
+
 func (e *EventLogger) WriteStartEvent() {
 	if !e.canLog {
 		return
@@ -101,18 +118,19 @@ func (e *EventLogger) WriteStartEvent() {
 
 	e.logger.Info("type/start",
 		zap.String("mid", e.machineID),
-		zap.String(t.Format("20060102150405")),
+		zap.String("time", t.Format("20060102150405")),
 	)
-	
-	func (e *EventLogger) WriteStopEvent() {
-		if !e.canLog {
-			return
-		}
-	
-		t := time.Now()
-	
-		e.logger.Info("type/stop",
-			zap.String("mid", e.machineID),
-			zap.String(t.Format("20060102150405")),
-		)
+}
+
+func (e *EventLogger) WriteStopEvent() {
+	if !e.canLog {
+		return
 	}
+
+	t := time.Now()
+
+	e.logger.Info("type/stop",
+		zap.String("mid", e.machineID),
+		zap.String("time", t.Format("20060102150405")),
+	)
+}

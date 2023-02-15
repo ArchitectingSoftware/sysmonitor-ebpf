@@ -108,6 +108,10 @@ int sys_exit(struct trace_event_raw_sys_exit *args)
 			return 0;
 	//END OF FILTERING
 
+	/*
+	 * OLD VERSION USING A STRUCT
+	 * New version will shift onto a single u64
+	 *
 	struct event *task_info;
 	task_info = bpf_ringbuf_reserve(&events, sizeof(struct event), 0);
 	if (!task_info) {
@@ -115,7 +119,16 @@ int sys_exit(struct trace_event_raw_sys_exit *args)
 	}
 	task_info->pid = pid;
 	task_info->syscall_id = syscall_id;
+	*/
 
+	u64 *task_info;
+	task_info = bpf_ringbuf_reserve(&events, sizeof(u64), 0);
+	if (!task_info) {
+		return 0;
+	}
+	*task_info = (((u64)pid) << 32) | syscall_id;
+	//task_info->pid = pid;
+	//task_info->syscall_id = syscall_id;
 	bpf_ringbuf_submit(task_info,0);
 	
 	return 0;
